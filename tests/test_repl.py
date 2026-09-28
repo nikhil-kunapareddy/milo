@@ -55,8 +55,16 @@ def test_off_topic_then_valid_request_reaches_research(backend, home):
     assert "→ Researching local marketing and best practices…" in out
     assert "Saved session ramen-fenway-boston-" in out  # stdin ran out: treated as /exit
 
+    assert "Market snapshot" in out
+    assert "Competitors" in out and "Tora Ramen" in out
+    assert "┃ Rating" not in out  # no Places data: the empty number columns are hidden
+    assert "need a Google Places key" in out
+    assert "Campaign ideas" in out and "1. Student lunch bowl" in out
+    assert "7-day content calendar" in out
+    assert "Sources" in out
+
     saved = Store().latest()
-    assert saved.state == "researching"
+    assert saved.state == "follow_up"
     assert saved.intake.audience == "existing_restaurant"
 
 
@@ -86,3 +94,16 @@ def test_unknown_backend_is_rejected():
     result = runner.invoke(cli.app, ["--backend", "gpt"], input="")
     assert result.exit_code != 0
     assert "choose one of" in result.output
+
+
+def test_brief_with_places_numbers_shows_them():
+    from milo.models import Brief
+    from tests.fakes import brief_data
+
+    brief = Brief.model_validate(brief_data())  # the fixture's competitors carry numbers
+    with cli.console.capture() as captured:
+        cli._render_brief(brief)
+    out = captured.get()
+    assert "┃ Rating" in out and "4.9" in out and "99,999" in out
+    assert "need a Google Places key" not in out
+    assert " 1. Source 1" in out

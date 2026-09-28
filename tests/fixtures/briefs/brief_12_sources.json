@@ -1,0 +1,187 @@
+{
+  "market_snapshot": "Fenway has a busy student lunch crowd. Boston Magazine ranks 15 ramen spots (https://www.bostonmagazine.com/restaurants/best-ramen-in-boston/). A viral list says otherwise (https://fake.example.com/viral-list).",
+  "competitors": [
+    {
+      "name": "Tora Ramen",
+      "rating": 4.9,
+      "review_count": 99999,
+      "price_level": "$",
+      "positioning": "Chinatown favorite for rich tonkotsu",
+      "source_ids": [
+        10,
+        1
+      ]
+    },
+    {
+      "name": "Santouka",
+      "rating": 4.8,
+      "review_count": 10,
+      "price_level": "$$",
+      "positioning": "Hokkaido chain near Back Bay",
+      "source_ids": [
+        12
+      ]
+    },
+    {
+      "name": "Ramen Ghost Kitchen",
+      "rating": 5.0,
+      "review_count": 42,
+      "price_level": "$",
+      "positioning": "Delivery-only newcomer",
+      "source_ids": [
+        12,
+        99
+      ]
+    }
+  ],
+  "review_themes": [
+    "Guests love the broth",
+    "Prices feel steep for students"
+  ],
+  "content_benchmarks": [],
+  "gaps": [
+    "No one runs a student lunch deal near Fenway"
+  ],
+  "campaign_ideas": [
+    {
+      "title": "Student lunch bowl",
+      "idea": "$12 weekday bowl with ID, below the $15–20 local range",
+      "why_it_fits": "Reviews call $19 steep",
+      "source_ids": [
+        10,
+        11,
+        12
+      ]
+    },
+    {
+      "title": "Game-night late menu",
+      "idea": "Late bowls after Red Sox games",
+      "why_it_fits": "Fenway crowds",
+      "source_ids": [
+        2
+      ]
+    },
+    {
+      "title": "Broth explainer reels",
+      "idea": "Short videos on the 12-hour broth",
+      "why_it_fits": "Broth is the top praise",
+      "source_ids": [
+        3,
+        3
+      ]
+    },
+    {
+      "title": "Campus ambassadors",
+      "idea": "Free bowl per 10 referrals",
+      "why_it_fits": "Students trust peers",
+      "source_ids": []
+    },
+    {
+      "title": "Loyalty stamp card",
+      "idea": "10th bowl free",
+      "why_it_fits": "Repeat visits",
+      "source_ids": [
+        12
+      ]
+    }
+  ],
+  "content_calendar": [
+    {
+      "day": "Mon",
+      "platform": "Instagram",
+      "post": "Mon post"
+    },
+    {
+      "day": "Tue",
+      "platform": "Instagram",
+      "post": "Tue post"
+    },
+    {
+      "day": "Wed",
+      "platform": "Instagram",
+      "post": "Wed post"
+    },
+    {
+      "day": "Thu",
+      "platform": "Instagram",
+      "post": "Thu post"
+    },
+    {
+      "day": "Fri",
+      "platform": "Instagram",
+      "post": "Fri post"
+    },
+    {
+      "day": "Sat",
+      "platform": "Instagram",
+      "post": "Sat post"
+    },
+    {
+      "day": "Sun",
+      "platform": "Instagram",
+      "post": "Sun post"
+    }
+  ],
+  "sources": [
+    {
+      "id": 1,
+      "title": "Source 1",
+      "url": "https://www.bostonmagazine.com/restaurants/best-ramen-in-boston/"
+    },
+    {
+      "id": 2,
+      "title": "Source 2",
+      "url": "https://www.tripadvisor.com/Restaurants-g60745-zfd11722-Boston_Massachusetts-Ramen.html"
+    },
+    {
+      "id": 3,
+      "title": "Source 3",
+      "url": "https://www.tastingtable.com/1867943/best-ramen-boston-local/"
+    },
+    {
+      "id": 4,
+      "title": "Source 4",
+      "url": "https://www.yelp.com/search?find_desc=Ramen&find_loc=Boston%2C+MA"
+    },
+    {
+      "id": 5,
+      "title": "Source 5",
+      "url": "https://www.yelp.com/search?find_desc=Japanese+Ramen&find_loc=Boston,+MA"
+    },
+    {
+      "id": 6,
+      "title": "Source 6",
+      "url": "https://totalramen.com/massachusetts/boston"
+    },
+    {
+      "id": 7,
+      "title": "Source 7",
+      "url": "https://sachaeats.com/best-ramen-in-boston/"
+    },
+    {
+      "id": 8,
+      "title": "Source 8",
+      "url": "https://www.timeout.com/boston/restaurants/best-ramen-in-boston"
+    },
+    {
+      "id": 9,
+      "title": "Source 9",
+      "url": "https://www.timeout.com/boston/restaurants"
+    },
+    {
+      "id": 10,
+      "title": "Tora Ramen on Google Maps",
+      "url": "https://maps.google.com/?cid=1000000000000000000"
+    },
+    {
+      "id": 11,
+      "title": "Ganko Ittetsu on Google Maps",
+      "url": "https://maps.google.com/?cid=1000000000000000001"
+    },
+    {
+      "id": 12,
+      "title": "Made-up press piece",
+      "url": "https://www.bostonglobe.com/2026/09/01/food/fenway-ramen-war-invented/"
+    }
+  ]
+}

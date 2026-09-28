@@ -22,7 +22,15 @@ from milo.session import (
     parse_audience,
 )
 from milo.store import Store
-from tests.fakes import FakeBackend, FakeCollector, intake_replies, places_result, reply
+from tests.fakes import (
+    FakeBackend,
+    FakeCollector,
+    brief_data,
+    intake_replies,
+    places_result,
+    reply,
+    scripted,
+)
 
 S = SessionState
 RAMEN = "I run a ramen place near Fenway, want more students"
@@ -192,9 +200,9 @@ async def test_audience_choice_runs_collectors_and_reaches_research(store):
         ("skip", "YouTube skipped (no key)"),
     ]
     assert steps[3].text.startswith("Researching")
-    assert ctl.state is S.RESEARCHING
+    assert ctl.state is S.FOLLOW_UP
     saved = store.load(ctl.session.id)
-    assert saved.state is S.RESEARCHING
+    assert saved.state is S.FOLLOW_UP
     assert saved.intake.audience is Audience.EXISTING
     assert [r.source for r in saved.collectors] == ["google_places", "youtube"]
     assert "https://maps.google.com/?cid=0" in saved.observed_urls
@@ -204,7 +212,7 @@ async def test_enter_skips_the_audience(store):
     ctl = await at_audience(store)
     await send(ctl, "")
     assert ctl.session.intake.audience is None
-    assert ctl.state is S.RESEARCHING
+    assert ctl.state is S.FOLLOW_UP
 
 
 async def test_collector_errors_show_as_skipped(store):
@@ -217,14 +225,18 @@ async def test_collector_errors_show_as_skipped(store):
     assert Step("Google Places skipped (invalid key)", "skip") in events
 
 
-async def test_enter_after_an_interruption_continues_without_recollecting(store):
+async def test_enter_after_a_failed_run_retries_without_recollecting(store):
     places = FakeCollector(places_result(), "Google Places")
     ctl = await at_audience(store, [places])
+    ctl.backend.respond = scripted(
+        {}, research=[Error("api_error", "Claude Code reported an error: overloaded"), brief_data()]
+    )
     await send(ctl, "1")
     assert ctl.state is S.RESEARCHING
-    await send(ctl, "")  # e.g. after Ctrl-C during research
-    assert places.calls == 1
     assert await send(ctl, "more text") == [Say(HINTS[S.RESEARCHING], "muted")]
+    await send(ctl, "")  # Enter tries again
+    assert ctl.state is S.FOLLOW_UP
+    assert places.calls == 1
 
 
 @pytest.mark.parametrize(

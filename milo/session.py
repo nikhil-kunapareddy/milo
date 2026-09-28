@@ -7,16 +7,40 @@ The controller never prints. It yields UI events and the CLI decides how they lo
 
 from __future__ import annotations
 
+import json
+import time
 from collections.abc import AsyncIterator, Sequence
-from dataclasses import dataclass
+from contextlib import aclosing
+from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal
+
+from pydantic import ValidationError
 
 from milo import collectors as sources
-from milo.backends.base import Backend
+from milo import prompts
+from milo.backends.base import (
+    Backend,
+    Error,
+    Final,
+    Progress,
+    RunOptions,
+    SessionStarted,
+    ToolCall,
+    ToolResult,
+)
 from milo.collectors.base import Collector, collect_all
+from milo.guard import CitationGuard, ground_competitors
 from milo.intake import IntakeFailure, parse_intake
-from milo.models import AUDIENCE_LABELS, Audience, Intake, Session, SessionState
+from milo.models import (
+    AUDIENCE_LABELS,
+    Audience,
+    Brief,
+    Intake,
+    Session,
+    SessionState,
+    parse_json_object,
+)
 from milo.store import Store, now
 
 State = SessionState
@@ -114,7 +138,33 @@ class Working:
     text: str  # transient: replaced by the next Working or cleared by any other event
 
 
-UIEvent = Say | Ask | Step | Working
+@dataclass(frozen=True)
+class ShowBrief:
+    brief: Brief
+
+
+@dataclass(frozen=True)
+class ShowText:
+    text: str  # markdown from the model, already through the citation guard
+    title: str = ""
+
+
+UIEvent = Say | Ask | Step | Working | ShowBrief | ShowText
+
+BRIEF_SCHEMA = Brief.model_json_schema()
+RESEARCH_OPTIONS = RunOptions(web=True, schema=BRIEF_SCHEMA, max_turns=30)
+REPAIR_OPTIONS = RunOptions(web=False, schema=BRIEF_SCHEMA, max_turns=4)
+
+
+@dataclass
+class RunResult:
+    """What one backend run produced, filled in as its events stream past."""
+
+    final: Final | None = None
+    error: Error | None = None
+    searches: int = 0
+    pages: int = 0
+    seen: list[str] = field(default_factory=list)
 
 
 class InvalidTransition(RuntimeError):
@@ -278,9 +328,103 @@ class Controller:
             yield event
 
     async def _research(self) -> AsyncIterator[UIEvent]:
+        session = self._require_session()
+        guard = CitationGuard(session.observed_urls)
+        started = time.monotonic()
         yield Step("Researching local marketing and best practices…", "work")
-        yield Say("Research isn't connected yet: that's the next build phase.", "warn")
-        yield Ask(CONTINUE_QUESTION)
+
+        run = RunResult()
+        async for event in self._stream(research_prompt(session), guard, run, RESEARCH_OPTIONS):
+            yield event
+        if run.error and run.error.kind == "max_turns" and session.backend_session_id:
+            # Out of turns mid-research: ask for the brief from what it found so far.
+            yield Working("Wrapping up with what it found so far…")
+            run = RunResult(searches=run.searches, pages=run.pages)
+            wrap_up = prompts.render("wrap_up.md")
+            async for event in self._stream(wrap_up, guard, run, REPAIR_OPTIONS, resume=True):
+                yield event
+        if run.error or run.final is None:
+            message = run.error.message if run.error else "The research ended without a brief."
+            yield Say(message, "error")
+            yield Ask(CONTINUE_QUESTION)
+            return  # still RESEARCHING: Enter tries again, collector data is kept
+        took = _duration(time.monotonic() - started)
+        yield Step(f"Searched {run.searches} times and read {run.pages} pages ({took})", "ok")
+
+        brief, problem = parse_brief(run.final)
+        if brief is None:  # one retry in the same session, asking for valid JSON only
+            yield Working("Fixing the brief's format…")
+            retry = RunResult()
+            repair = prompts.render("repair.md", problem=problem)
+            async for event in self._stream(repair, guard, retry, REPAIR_OPTIONS, resume=True):
+                yield event
+            brief, problem = parse_brief(retry.final)
+            # Show the research reply itself: it holds the findings; the retry may be junk.
+            raw = run.final.text or (retry.final.text if retry.final else "")
+        if brief is None:
+            text, removed = guard.clean_text(raw)
+            session.brief_raw = text
+            session.observed_urls = guard.observed
+            self._transition(State.FOLLOW_UP)
+            warning = f"The brief came back in the wrong format ({problem}). Here's the raw text."
+            yield Say(warning, "warn")
+            if removed:
+                yield Step(f"Removed {removed} unverified links", "ok")
+            yield ShowText(text, "Brief (raw)")
+            yield Ask(FOLLOW_UP_PROMPT)
+            return
+
+        check = guard.check_brief(ground_competitors(brief, _places(session)))
+        removed_note = f", {len(check.removed)} removed" if check.removed else ""
+        if check.total:
+            yield Step(f"Verified {check.kept} of {check.total} citations{removed_note}", "ok")
+        else:
+            yield Step("The brief came back without any citations", "skip")
+        session.brief = check.brief
+        session.sources = list(check.brief.sources)
+        session.observed_urls = guard.observed
+        self._transition(State.FOLLOW_UP)
+        yield ShowBrief(check.brief)
+        yield Ask(FOLLOW_UP_PROMPT)
+
+    async def _stream(
+        self,
+        prompt: str,
+        guard: CitationGuard,
+        run: RunResult,
+        options: RunOptions,
+        *,
+        resume: bool = False,
+    ) -> AsyncIterator[UIEvent]:
+        """Run the backend once, turning its events into progress and filling in `run`."""
+        session = self._require_session()
+        events = self.backend.run(
+            prompt,
+            cwd=self.store.work_dir(session.id),
+            resume=session.backend_session_id if resume else None,
+            options=options,
+        )
+        async with aclosing(events) as stream:
+            async for event in stream:
+                if isinstance(event, SessionStarted):
+                    if session.backend_session_id != event.session_id:
+                        session.backend_session_id = event.session_id
+                        self.store.save(session)
+                elif isinstance(event, ToolCall):
+                    run.searches += event.kind == "search"
+                    yield Working(event.summary)
+                elif isinstance(event, ToolResult):
+                    run.pages += event.kind == "read" and event.ok
+                    if event.urls:
+                        guard.observe(event.urls)
+                        session.observed_urls = guard.observed
+                        self.store.save(session)
+                elif isinstance(event, Progress):
+                    yield Working(_one_line(event.text))
+                elif isinstance(event, Final):
+                    run.final = event
+                elif isinstance(event, Error):
+                    run.error = event
 
     async def _follow_up(self, text: str) -> AsyncIterator[UIEvent]:
         yield Say("Follow-ups aren't connected yet.", "warn")
@@ -338,3 +482,61 @@ class Controller:
         if self.session is None:
             raise InvalidTransition(f"{self.state} needs a session")
         return self.session
+
+
+# Research helpers ----------------------------------------------------------------------
+
+
+def research_prompt(session: Session) -> str:
+    """The research instructions plus every collector result, skipped ones included."""
+    available, unavailable = [], []
+    for result in session.collectors:
+        label = sources.LABELS.get(result.source, result.source)
+        if result.status == "ok":
+            data = json.dumps(result.data, indent=1, ensure_ascii=False)
+            available.append({"label": label, "data": data, "note": result.note})
+        else:
+            note = result.note or "unavailable"
+            unavailable.append({"label": label, "source": result.source, "note": note})
+    audience = session.intake.audience
+    return prompts.render(
+        "research.md",
+        intake=session.intake,
+        audience=audience.label if audience else None,
+        available=available,
+        unavailable=unavailable,
+        has_reviews=any(p.get("reviews") for p in _places(session) or []),
+    )
+
+
+def parse_brief(final: Final | None) -> tuple[Brief | None, str]:
+    """The brief, or None and a short description of what was wrong with it."""
+    if final is None:
+        return None, "there was no reply"
+    data = final.structured if final.structured is not None else parse_json_object(final.text)
+    if data is None:
+        return None, "the reply wasn't JSON"
+    try:
+        return Brief.model_validate(data), ""
+    except ValidationError as exc:
+        problems = [
+            f"{'.'.join(str(p) for p in e['loc']) or 'brief'}: {e['msg']}" for e in exc.errors()
+        ]
+        return None, "; ".join(problems[:3])
+
+
+def _places(session: Session) -> list[dict[str, Any]] | None:
+    for result in session.collectors:
+        if result.source == "google_places" and result.status == "ok" and result.data:
+            return result.data.get("places")
+    return None
+
+
+def _one_line(text: str, limit: int = 80) -> str:
+    line = text.strip().splitlines()[0] if text.strip() else ""
+    return line if len(line) <= limit else line[: limit - 1] + "…"
+
+
+def _duration(seconds: float) -> str:
+    minutes, secs = divmod(round(seconds), 60)
+    return f"{minutes}m {secs}s" if minutes else f"{secs}s"

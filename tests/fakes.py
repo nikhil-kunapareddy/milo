@@ -17,6 +17,8 @@ from milo.backends.base import (
 )
 from milo.models import CollectorResult, Intake
 
+FIXTURES = Path(__file__).parent / "fixtures"
+
 Responder = Callable[[str, RunOptions, str | None], list[BackendEvent]]
 READY = BackendStatus(installed=True, logged_in=True, version="test", auth_method="test")
 
@@ -55,18 +57,54 @@ def intake_message(prompt: str) -> str:
     return prompt.split("<<<\n", 1)[1].split("\n>>>", 1)[0]
 
 
-def intake_replies(table: dict[str, dict | str | Error]) -> Responder:
-    """Answer intake prompts from a table: message -> JSON reply, raw text, or an Error."""
+def prompt_kind(prompt: str) -> str:
+    """Which of Milo's prompts this is, by a phrase each template contains."""
+    for kind, phrase in (
+        ("intake", "food business owner's message"),
+        ("research", "Research the local"),
+        ("repair", "wasn't a valid brief"),
+        ("wrap_up", "out of research time"),
+    ):
+        if phrase in prompt:
+            return kind
+    return "follow_up"
+
+
+def as_events(reply: dict | str | Error | list, session_id: str) -> list[BackendEvent]:
+    if isinstance(reply, list):
+        return reply
+    if isinstance(reply, Error):
+        return [reply]
+    if isinstance(reply, dict):
+        return [SessionStarted(session_id), Final(json.dumps(reply), session_id, structured=reply)]
+    return [SessionStarted(session_id), Final(reply, session_id)]
+
+
+def scripted(intake: dict[str, dict | str | Error] | None = None, **replies: Any) -> Responder:
+    """Intake answers come from a table keyed by the user's message; every other prompt kind
+    (research, repair, wrap_up, follow_up) pops the next reply from its own list."""
+    queues = {kind: list(value) for kind, value in replies.items()}
 
     def respond(prompt: str, options: RunOptions, resume: str | None) -> list[BackendEvent]:
-        reply = table[intake_message(prompt)]
-        if isinstance(reply, Error):
-            return [reply]
-        if isinstance(reply, dict):
-            return [SessionStarted("intake"), Final(json.dumps(reply), "intake", structured=reply)]
-        return [SessionStarted("intake"), Final(reply, "intake")]
+        kind = prompt_kind(prompt)
+        if kind == "intake":
+            return as_events((intake or {})[intake_message(prompt)], "intake")
+        queue = queues.get(kind)
+        if not queue:
+            raise AssertionError(f"unexpected {kind} prompt")
+        return as_events(queue.pop(0), resume or "research-session")
 
     return respond
+
+
+def intake_replies(table: dict[str, dict | str | Error]) -> Responder:
+    """Intake answers from a table; research gets a valid brief."""
+    return scripted(table, research=[brief_data()] * 5)
+
+
+def brief_data(**overrides: Any) -> dict:
+    data = json.loads((FIXTURES / "briefs" / "brief_12_sources.json").read_text())
+    return {**data, **overrides}
 
 
 class FakeCollector:

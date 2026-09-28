@@ -29,7 +29,9 @@ def test_search_and_fetch_run():
         ("WebSearch", "Searching the web: best ramen restaurants in Boston"),
         ("WebFetch", "Reading bostonmagazine.com"),
     ]
+    assert [c.kind for c in calls] == ["search", "read"]
     search, fetch = of(events, ToolResult)
+    assert (search.kind, fetch.kind) == ("search", "read")
     assert search.name == "WebSearch" and search.ok
     assert len(search.urls) == 9
     assert "https://www.bostonmagazine.com/restaurants/best-ramen-in-boston/" in search.urls

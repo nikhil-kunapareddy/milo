@@ -10,7 +10,9 @@ from typing import Annotated
 
 import typer
 from rich.console import Console
+from rich.markdown import Markdown
 from rich.markup import escape
+from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
@@ -22,8 +24,8 @@ from milo.backends.claude_code import check_cli
 from milo.backends.codex import CodexBackend
 from milo.collectors import places, youtube
 from milo.collectors.base import KeyCheck, KeyStatus
-from milo.models import Session, SessionState
-from milo.session import Ask, Controller, Say, Step, UIEvent, Working
+from milo.models import Brief, Session, SessionState, Source
+from milo.session import Ask, Controller, Say, ShowBrief, ShowText, Step, UIEvent, Working
 from milo.store import Store
 
 TAGLINE = "Milo · marketing research for food businesses"
@@ -189,6 +191,101 @@ def _render(event: UIEvent) -> None:
         console.print(f"\n[bold]{escape(event.text)}[/]")
     elif isinstance(event, Step):
         console.print(f"{STEP_ICONS[event.status]} {escape(event.text)}")
+    elif isinstance(event, ShowBrief):
+        _render_brief(event.brief)
+    elif isinstance(event, ShowText):
+        console.print()
+        console.print(Panel(Markdown(event.text), title=event.title or None, title_align="left"))
+
+
+def _render_brief(brief: Brief) -> None:
+    console.print()
+    console.print(
+        Panel(
+            escape(brief.market_snapshot),
+            title="[bold]Market snapshot[/]",
+            title_align="left",
+            border_style="cyan",
+        )
+    )
+    if brief.competitors:
+        # Numbers only ever come from Google Places; without it, skip three empty columns.
+        numbers = any(
+            c.rating is not None or c.review_count is not None or c.price_level
+            for c in brief.competitors
+        )
+        table = _table("Competitors")
+        table.add_column("Name", style="bold", ratio=2)
+        if numbers:
+            table.add_column("Rating", justify="right", no_wrap=True)
+            table.add_column("Reviews", justify="right", no_wrap=True)
+            table.add_column("Price", no_wrap=True)
+        table.add_column("Positioning", ratio=4)
+        table.add_column("Sources", style="dim", no_wrap=True)
+        for c in brief.competitors:
+            stats = (
+                [
+                    f"{c.rating:.1f}" if c.rating is not None else "–",
+                    f"{c.review_count:,}" if c.review_count is not None else "–",
+                    escape(c.price_level or "–"),
+                ]
+                if numbers
+                else []
+            )
+            table.add_row(escape(c.name), *stats, escape(c.positioning), _refs(c.source_ids))
+        console.print(table)
+        if not numbers:
+            note = "Ratings, review counts, and prices need a Google Places key: `milo setup`."
+            console.print(note, style="dim")
+    _bullets("Review themes", brief.review_themes)
+    if brief.content_benchmarks:
+        _bullets("Content benchmarks", brief.content_benchmarks)
+    _bullets("Gaps and opportunities", brief.gaps)
+
+    _heading("Campaign ideas")
+    for number, idea in enumerate(brief.campaign_ideas, 1):
+        console.print(f"[bold]{number}. {escape(idea.title)}[/] [dim]{_refs(idea.source_ids)}[/]")
+        console.print(f"   {escape(idea.idea)}")
+        console.print(f"   [dim]Why it fits:[/] {escape(idea.why_it_fits)}")
+
+    calendar = _table("7-day content calendar")
+    calendar.add_column("Day", style="bold", no_wrap=True)
+    calendar.add_column("Platform", no_wrap=True)
+    calendar.add_column("Post")
+    for day in brief.content_calendar:
+        calendar.add_row(escape(day.day), escape(day.platform), escape(day.post))
+    console.print()
+    console.print(calendar)
+    render_sources(brief.sources)
+
+
+def render_sources(sources: list[Source]) -> None:
+    _heading("Sources")
+    if not sources:
+        console.print("[dim]No verified sources yet.[/]")
+    for source in sources:
+        console.print(f"[dim]{source.id:>2}.[/] {escape(source.title)}")
+        console.print(f"    [blue]{escape(source.url)}[/]")
+
+
+def _table(title: str) -> Table:
+    return Table(title=title, title_justify="left", title_style="bold", expand=True)
+
+
+def _heading(title: str) -> None:
+    console.print(f"\n[bold]{title}[/]")
+
+
+def _bullets(title: str, items: list[str]) -> None:
+    _heading(title)
+    if not items:
+        console.print("[dim]  None found.[/]")
+    for item in items:
+        console.print(f"  • {escape(item)}")
+
+
+def _refs(ids: list[int]) -> str:
+    return escape("".join(f"[{i}]" for i in ids))
 
 
 def _status_line(backend: Backend, status: BackendStatus, cfg: config.Config) -> str:

@@ -7,6 +7,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
+ToolKind = Literal["search", "read", "other"]
+
 
 @dataclass(frozen=True)
 class SessionStarted:
@@ -24,6 +26,7 @@ class ToolCall:
     name: str
     input: dict[str, Any]
     summary: str  # one line for the user: "Searching the web: ramen boston"
+    kind: ToolKind = "other"
 
 
 @dataclass(frozen=True)
@@ -33,6 +36,7 @@ class ToolResult:
     content: str
     urls: list[str] = field(default_factory=list)  # URLs this result actually showed the agent
     ok: bool = True
+    kind: ToolKind = "other"
 
 
 @dataclass(frozen=True)

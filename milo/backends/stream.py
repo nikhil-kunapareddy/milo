@@ -27,6 +27,7 @@ from milo.backends.base import (
     Progress,
     SessionStarted,
     ToolCall,
+    ToolKind,
     ToolResult,
 )
 
@@ -34,6 +35,7 @@ WEB_SEARCH = "WebSearch"
 WEB_FETCH = "WebFetch"
 WEB_TOOLS = (WEB_SEARCH, WEB_FETCH)
 STRUCTURED_OUTPUT = "StructuredOutput"  # the tool --json-schema adds; internal plumbing
+TOOL_KINDS: dict[str, ToolKind] = {WEB_SEARCH: "search", WEB_FETCH: "read"}
 
 LOGIN_HINT = "Log in once with `claude auth login`, then try again."
 _LINKS_LINE = re.compile(r"^Links: (\[.*\])$", re.MULTILINE)
@@ -92,7 +94,9 @@ class StreamParser:
                 if name == STRUCTURED_OUTPUT:
                     continue
                 tool_input = block.get("input") if isinstance(block.get("input"), dict) else {}
-                events.append(ToolCall(call_id, name, tool_input, _summary(name, tool_input)))
+                summary = _summary(name, tool_input)
+                kind = TOOL_KINDS.get(name, "other")
+                events.append(ToolCall(call_id, name, tool_input, summary, kind))
         return events
 
     def _user(self, event: dict[str, Any]) -> list[BackendEvent]:
@@ -108,7 +112,9 @@ class StreamParser:
             content = _text(block.get("content"))
             urls, ok = _observed_urls(name, structured, content)
             ok = ok and not block.get("is_error", False)
-            events.append(ToolResult(call_id, name, content, urls, ok))
+            events.append(
+                ToolResult(call_id, name, content, urls, ok, TOOL_KINDS.get(name, "other"))
+            )
         return events
 
     def _result(self, event: dict[str, Any]) -> list[BackendEvent]:
