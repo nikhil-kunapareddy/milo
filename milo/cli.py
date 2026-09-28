@@ -25,8 +25,18 @@ from milo.backends.codex import CodexBackend
 from milo.collectors import places, youtube
 from milo.collectors.base import KeyCheck, KeyStatus
 from milo.models import Brief, Session, SessionState, Source
-from milo.session import Ask, Controller, Say, ShowBrief, ShowText, Step, UIEvent, Working
-from milo.store import Store
+from milo.session import (
+    Ask,
+    Controller,
+    Say,
+    ShowBrief,
+    ShowSources,
+    ShowText,
+    Step,
+    UIEvent,
+    Working,
+)
+from milo.store import SessionNotFound, Store
 
 TAGLINE = "Milo · marketing research for food businesses"
 
@@ -77,15 +87,41 @@ def main(
         typer.Option("--version", callback=_show_version, is_eager=True, help="Show version."),
     ] = False,
     backend: Annotated[
-        str, typer.Option("--backend", help=f"Agent backend: {', '.join(BACKENDS)}.")
-    ] = DEFAULT_BACKEND,
+        str | None,
+        typer.Option(
+            "--backend", help=f"Agent backend: {', '.join(BACKENDS)} (default {DEFAULT_BACKEND})."
+        ),
+    ] = None,
 ) -> None:
     """Milo · marketing research for food businesses."""
-    if backend not in BACKENDS:
+    if backend is not None and backend not in BACKENDS:
         raise typer.BadParameter(f"choose one of: {', '.join(BACKENDS)}", param_hint="--backend")
     ctx.obj = {"backend": backend}
     if ctx.invoked_subcommand is None:
-        raise typer.Exit(_interactive(backend))
+        raise typer.Exit(_interactive(backend or DEFAULT_BACKEND))
+
+
+@app.command()
+def resume(
+    ctx: typer.Context,
+    session_id: Annotated[
+        str | None, typer.Argument(help="Session to reopen. Default: the most recent.")
+    ] = None,
+) -> None:
+    """Reopen a saved session and keep asking follow-ups."""
+    store = Store()
+    try:
+        session = store.load(session_id) if session_id else store.latest()
+    except SessionNotFound as exc:
+        console.print(f"[red]✗[/] {escape(str(exc))}")
+        raise typer.Exit(1) from exc
+    if session is None:
+        console.print("No saved sessions yet. Run `milo` to start one.")
+        raise typer.Exit(1)
+    backend = ctx.obj.get("backend") or (
+        session.backend if session.backend in BACKENDS else DEFAULT_BACKEND
+    )
+    raise typer.Exit(_interactive(backend, session=session))
 
 
 @app.command()
@@ -196,6 +232,8 @@ def _render(event: UIEvent) -> None:
     elif isinstance(event, ShowText):
         console.print()
         console.print(Panel(Markdown(event.text), title=event.title or None, title_align="left"))
+    elif isinstance(event, ShowSources):
+        render_sources(event.sources)
 
 
 def _render_brief(brief: Brief) -> None:

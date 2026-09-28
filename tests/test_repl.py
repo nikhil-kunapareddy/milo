@@ -107,3 +107,45 @@ def test_brief_with_places_numbers_shows_them():
     assert "┃ Rating" in out and "4.9" in out and "99,999" in out
     assert "need a Google Places key" not in out
     assert " 1. Source 1" in out
+
+
+# milo resume ------------------------------------------------------------------------------
+
+
+def test_resume_with_no_sessions():
+    result = runner.invoke(cli.app, ["resume"])
+    assert result.exit_code == 1
+    assert "No saved sessions yet" in result.output
+
+
+def test_resume_unknown_session():
+    result = runner.invoke(cli.app, ["resume", "nope-nope-0000"])
+    assert result.exit_code == 1
+    assert "No saved session called 'nope-nope-0000'" in result.output
+
+
+def test_resume_lands_in_follow_up_and_reports(monkeypatch, tmp_path):
+    from tests.fakes import scripted
+    from tests.test_followup import follow_up_session
+
+    follow_up_session(Store())
+    fake = FakeBackend(scripted({}, follow_up=["Try a **student lunch** deal."]))
+    chosen = []
+    monkeypatch.setattr(cli, "get_backend", lambda name: chosen.append(name) or fake)
+    monkeypatch.chdir(tmp_path)
+
+    result = runner.invoke(
+        cli.app, ["resume"], input="what should I try first?\n/sources\n/report\n/exit\n"
+    )
+
+    out = result.output
+    assert result.exit_code == 0, out
+    assert chosen == ["claude-code"]  # the session's own backend
+    assert "Resumed ramen-boston-7f3a: ramen in Boston" in out
+    assert "Market snapshot" in out  # the brief is shown again
+    assert "Try a student lunch deal." in out
+    assert out.count("Boston Magazine") >= 2  # in the brief's sources and in /sources
+    assert "Saved ./milo-ramen-boston-" in out
+    [written] = tmp_path.glob("milo-ramen-boston-*.md")
+    assert "### Q: what should I try first?" in written.read_text()
+    assert "Saved session ramen-boston-7f3a" in out

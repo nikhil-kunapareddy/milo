@@ -103,6 +103,10 @@ class CitationGuard:
 
         return _LINK.sub(replace, text), removed
 
+    def verified_links(self, text: str) -> list[tuple[str, str]]:
+        """(label, url) for each verified link in the text; label is "" for bare URLs."""
+        return [(label, url) for label, url in find_links(text) if self.verified(url)]
+
     def check_brief(self, brief: Brief) -> BriefCheck:
         """Drop unverified sources, renumber the rest 1..n, and fix every reference to them."""
         renumber: dict[int, int] = {}
@@ -145,6 +149,17 @@ class CitationGuard:
         if isinstance(value, dict):
             return {k: v if k in skip else self._clean_strings(v) for k, v in value.items()}
         return value
+
+
+def find_links(text: str) -> list[tuple[str, str]]:
+    """(label, url) for every link in the text, markdown or bare, in order."""
+    links = []
+    for match in _LINK.finditer(text):
+        if match.group("md"):
+            links.append((match.group("label").strip(), match.group("md")))
+        else:
+            links.append(("", match.group("bare").rstrip(_TRAILING)))
+    return links
 
 
 def ground_competitors(brief: Brief, places: list[dict[str, Any]] | None) -> Brief:

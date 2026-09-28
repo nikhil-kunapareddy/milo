@@ -13,12 +13,14 @@ from collections.abc import AsyncIterator, Sequence
 from contextlib import aclosing
 from dataclasses import dataclass, field
 from enum import StrEnum
+from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 from pydantic import ValidationError
 
 from milo import collectors as sources
-from milo import prompts
+from milo import prompts, report
 from milo.backends.base import (
     Backend,
     Error,
@@ -30,7 +32,7 @@ from milo.backends.base import (
     ToolResult,
 )
 from milo.collectors.base import Collector, collect_all
-from milo.guard import CitationGuard, ground_competitors
+from milo.guard import CitationGuard, ground_competitors, normalize
 from milo.intake import IntakeFailure, parse_intake
 from milo.models import (
     AUDIENCE_LABELS,
@@ -39,6 +41,8 @@ from milo.models import (
     Intake,
     Session,
     SessionState,
+    Source,
+    Turn,
     parse_json_object,
 )
 from milo.store import Store, now
@@ -149,12 +153,19 @@ class ShowText:
     title: str = ""
 
 
-UIEvent = Say | Ask | Step | Working | ShowBrief | ShowText
+@dataclass(frozen=True)
+class ShowSources:
+    sources: list[Source]
+
+
+UIEvent = Say | Ask | Step | Working | ShowBrief | ShowText | ShowSources
 
 BRIEF_SCHEMA = Brief.model_json_schema()
 # Thoroughness over speed: parallel searches share a turn, so 80 leaves plenty of room.
 RESEARCH_OPTIONS = RunOptions(web=True, schema=BRIEF_SCHEMA, max_turns=80)
 REPAIR_OPTIONS = RunOptions(web=False, schema=BRIEF_SCHEMA, max_turns=4)
+FOLLOW_UP_OPTIONS = RunOptions(web=True, max_turns=40)
+OFF_TOPIC_REPLY = "OFF_TOPIC"
 
 
 @dataclass
@@ -198,8 +209,10 @@ class Controller:
         collectors: Sequence[Collector],
         store: Store,
         session: Session | None = None,
+        report_dir: Path | None = None,  # where /report writes; the current folder by default
     ) -> None:
         self.backend = backend
+        self.report_dir = report_dir
         self.collectors = collectors
         self.store = store
         self.session = session
@@ -217,11 +230,21 @@ class Controller:
             return [Ask(INTAKE_QUESTION)]
         intake = self.session.intake
         resumed = Say(f"Resumed {self.session.id}: {intake.what} in {intake.where}", "muted")
+        if self.state is State.FOLLOW_UP:
+            shown: list[UIEvent] = [resumed]
+            if self.session.brief is not None:
+                shown.append(ShowBrief(self.session.brief))
+            elif self.session.brief_raw:
+                shown.append(ShowText(self.session.brief_raw, "Brief (raw)"))
+            if self.session.turns:
+                count = len(self.session.turns)
+                shown.append(Say(f"{count} follow-up{'s' * (count != 1)} so far.", "muted"))
+            return [*shown, Ask(FOLLOW_UP_PROMPT)]
         next_question = {
             State.AUDIENCE: AUDIENCE_QUESTION,
             State.COLLECTING: CONTINUE_QUESTION,
             State.RESEARCHING: CONTINUE_QUESTION,
-        }.get(self.state, FOLLOW_UP_PROMPT)
+        }[self.state]
         return [resumed, Ask(next_question)]
 
     def hint(self) -> str:
@@ -427,8 +450,38 @@ class Controller:
                 elif isinstance(event, Error):
                     run.error = event
 
-    async def _follow_up(self, text: str) -> AsyncIterator[UIEvent]:
-        yield Say("Follow-ups aren't connected yet.", "warn")
+    async def _follow_up(self, question: str) -> AsyncIterator[UIEvent]:
+        """Continue the research session (--resume), then guard the answer's links."""
+        session = self._require_session()
+        guard = CitationGuard(session.observed_urls)
+        yield Working("Thinking about your question…")
+        prompt = prompts.render("followup.md", intake=session.intake, question=question)
+        run = RunResult()
+        async for event in self._stream(prompt, guard, run, FOLLOW_UP_OPTIONS, resume=True):
+            yield event
+        if run.error or run.final is None:
+            yield Say(run.error.message if run.error else "No answer came back.", "error")
+            return
+        answer = run.final.text.strip()
+        if answer.strip(".` ").upper() == OFF_TOPIC_REPLY or not answer:
+            intake = session.intake
+            yield Say(
+                f"That's outside what Milo covers. Ask about marketing {intake.what} in "
+                f"{intake.where}: competitors, offers, content, or customers.",
+                "warn",
+            )
+            return
+
+        cleaned, removed = guard.clean_text(answer)
+        links = guard.verified_links(cleaned)
+        if links or removed:
+            note = f", {removed} removed" if removed else ""
+            yield Step(f"Verified {len(links)} of {len(links) + removed} links{note}", "ok")
+        _add_sources(session, links)
+        session.turns.append(Turn(question=question, answer=cleaned, asked_at=now()))
+        session.observed_urls = guard.observed
+        self._transition(State.FOLLOW_UP)  # saves the turn
+        yield ShowText(cleaned)
 
     # Commands --------------------------------------------------------------------------
 
@@ -445,8 +498,11 @@ class Controller:
         elif name in ("/report", "/sources"):
             if self.session is None or (self.session.brief is None and not self.session.brief_raw):
                 yield Say(NOTHING_YET, "muted")
+            elif name == "/sources":
+                yield ShowSources(list(self.session.sources))
             else:
-                yield Say(f"{name} isn't connected yet.", "warn")
+                path = report.write(self.session, self.report_dir or Path.cwd())
+                yield Say(f"Saved {_shown_path(path)}", "ok")
         else:
             yield Say(f"Unknown command {name}. Try /help.", "muted")
 
@@ -541,3 +597,23 @@ def _one_line(text: str, limit: int = 80) -> str:
 def _duration(seconds: float) -> str:
     minutes, secs = divmod(round(seconds), 60)
     return f"{minutes}m {secs}s" if minutes else f"{secs}s"
+
+
+def _add_sources(session: Session, links: list[tuple[str, str]]) -> None:
+    """Verified links from a follow-up join the session's numbered source list."""
+    known = {normalize(s.url) for s in session.sources}
+    for label, url in links:
+        key = normalize(url)
+        if key in known:
+            continue
+        known.add(key)
+        title = label or urlsplit(url).netloc.removeprefix("www.")
+        next_id = max((s.id for s in session.sources), default=0) + 1
+        session.sources.append(Source(id=next_id, title=title, url=url))
+
+
+def _shown_path(path: Path) -> str:
+    try:
+        return f"./{path.relative_to(Path.cwd())}"
+    except ValueError:
+        return str(path)

@@ -1,0 +1,109 @@
+# Milo brief: {{ intake.what }} in {{ intake.where }}
+
+**What:** {{ intake.what }} · **Where:** {{ intake.where }} · **Audience:** {{ audience or "not specified" }} · **Date:** {{ day }}
+
+{% if brief %}
+## Market snapshot
+
+{{ brief.market_snapshot }}
+
+## Competitors
+
+{% if brief.competitors %}
+{% if numbers %}
+| Name | Rating | Reviews | Price | Positioning | Sources |
+|---|---:|---:|---|---|---|
+{% for c in brief.competitors %}
+| {{ c.name | cell }} | {{ c.rating | rating }} | {{ c.review_count | count }} | {{ (c.price_level or "–") | cell }} | {{ c.positioning | cell }} | {{ c.source_ids | refs }} |
+{% endfor %}
+{% else %}
+| Name | Positioning | Sources |
+|---|---|---|
+{% for c in brief.competitors %}
+| {{ c.name | cell }} | {{ c.positioning | cell }} | {{ c.source_ids | refs }} |
+{% endfor %}
+
+_Ratings, review counts, and prices come only from Google Places, which wasn't available for this session._
+{% endif %}
+{% else %}
+_None found._
+{% endif %}
+
+## Review themes
+
+{% for theme in brief.review_themes %}
+- {{ theme }}
+{% else %}
+_None found._
+{% endfor %}
+
+{% if brief.content_benchmarks %}
+## Content benchmarks
+
+{% for item in brief.content_benchmarks %}
+- {{ item }}
+{% endfor %}
+
+{% endif %}
+## Gaps and opportunities
+
+{% for gap in brief.gaps %}
+- {{ gap }}
+{% else %}
+_None found._
+{% endfor %}
+
+## Campaign ideas
+
+{% for idea in brief.campaign_ideas %}
+### {{ loop.index }}. {{ idea.title }}
+
+{{ idea.idea }}
+
+**Why it fits:** {{ idea.why_it_fits }}{% if idea.source_ids %} {{ idea.source_ids | refs }}{% endif %}
+
+
+{% endfor %}
+## 7-day content calendar
+
+| Day | Platform | Post |
+|---|---|---|
+{% for day in brief.content_calendar %}
+| {{ day.day | cell }} | {{ day.platform | cell }} | {{ day.post | cell }} |
+{% endfor %}
+
+{% else %}
+## Brief
+
+_The brief came back in an unexpected format, so this is the model's text as written, with unverified links removed._
+
+{{ brief_raw | demote }}
+
+{% endif %}
+{% if turns %}
+## Follow-up Q&A
+
+{% for turn in turns %}
+### Q: {{ turn.question | oneline }}
+
+{{ turn.answer | demote }}
+
+{% endfor %}
+{% endif %}
+## Data coverage
+
+{{ coverage | join(" · ") }}
+
+## Sources
+
+{% for source in sources %}
+{{ source.id }}. [{{ source.title | link_text }}]({{ source.url }})
+{% else %}
+_No verified sources._
+{% endfor %}
+{% for source in sources %}
+{% if loop.first %}
+
+{% endif %}
+[{{ source.id }}]: {{ source.url }}
+{% endfor %}
