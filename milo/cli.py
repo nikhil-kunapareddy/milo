@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import aclosing
 from pathlib import Path
 from typing import Annotated
 
@@ -14,11 +15,16 @@ from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
 from milo import __version__, config
-from milo.backends import BACKENDS, DEFAULT_BACKEND
-from milo.backends.claude_code import CliStatus, check_cli
+from milo import collectors as sources
+from milo.backends import BACKENDS, DEFAULT_BACKEND, get_backend
+from milo.backends.base import Backend, BackendStatus
+from milo.backends.claude_code import check_cli
 from milo.backends.codex import CodexBackend
 from milo.collectors import places, youtube
 from milo.collectors.base import KeyCheck, KeyStatus
+from milo.models import Session, SessionState
+from milo.session import Ask, Controller, Say, Step, UIEvent, Working
+from milo.store import Store
 
 TAGLINE = "Milo · marketing research for food businesses"
 
@@ -43,6 +49,9 @@ KEY_HELP: dict[str, tuple[str, str, str]] = {
         'Enable "YouTube Data API v3" for the key\'s project.',
     ),
 }
+
+TONES = {"info": None, "ok": "green", "warn": "yellow", "error": "red", "muted": "dim"}
+STEP_ICONS = {"ok": "[green]✓[/]", "skip": "[dim]–[/]", "work": "[cyan]→[/]", "fail": "[red]✗[/]"}
 
 STATUS_ICONS = {
     KeyStatus.VALID: "[green]✓[/]",
@@ -74,8 +83,7 @@ def main(
         raise typer.BadParameter(f"choose one of: {', '.join(BACKENDS)}", param_hint="--backend")
     ctx.obj = {"backend": backend}
     if ctx.invoked_subcommand is None:
-        console.print(f"[bold]{TAGLINE}[/]")
-        console.print("Interactive research isn't built yet. Try `milo doctor` or `milo setup`.")
+        raise typer.Exit(_interactive(backend))
 
 
 @app.command()
@@ -121,6 +129,80 @@ def doctor() -> None:
         raise typer.Exit(1)
 
 
+# Interactive session -----------------------------------------------------------------
+
+
+def _interactive(backend_name: str, session: Session | None = None) -> int:
+    backend = get_backend(backend_name)
+    cfg = config.load()
+    status = asyncio.run(backend.check())
+    console.print(f"[bold]{TAGLINE}[/]")
+    console.print(_status_line(backend, status, cfg))
+    if not status.ready:
+        console.print(f"[red]✗[/] {escape(status.problem or 'The backend is not available.')}")
+        return 1
+    store = Store()
+    controller = Controller(
+        backend=backend, collectors=sources.build(cfg), store=store, session=session
+    )
+    _repl(controller)
+    return 0
+
+
+def _repl(controller: Controller) -> None:
+    for event in controller.opening():
+        _render(event)
+    while controller.state is not SessionState.ENDED:
+        try:
+            text = console.input("[bold]>[/] ")
+        except (EOFError, KeyboardInterrupt):  # Ctrl-D or Ctrl-C at the prompt: save and quit
+            console.print()
+            text = "/exit"
+        try:
+            asyncio.run(_render_stream(controller.handle(text)))
+        except KeyboardInterrupt:  # Ctrl-C mid-run: the backend is stopped, the session kept
+            console.print(f"\n[yellow]Stopped.[/] {escape(controller.hint())}")
+
+
+async def _render_stream(events: AsyncIterator[UIEvent]) -> None:
+    spinner = None
+    try:
+        async with aclosing(events) as stream:
+            async for event in stream:
+                if isinstance(event, Working):
+                    if spinner is None:
+                        spinner = console.status(escape(event.text))
+                        spinner.start()
+                    else:
+                        spinner.update(escape(event.text))
+                    continue
+                _render(event)
+    finally:
+        if spinner is not None:
+            spinner.stop()
+
+
+def _render(event: UIEvent) -> None:
+    if isinstance(event, Say):
+        console.print(escape(event.text), style=TONES[event.tone])
+    elif isinstance(event, Ask):
+        console.print(f"\n[bold]{escape(event.text)}[/]")
+    elif isinstance(event, Step):
+        console.print(f"{STEP_ICONS[event.status]} {escape(event.text)}")
+
+
+def _status_line(backend: Backend, status: BackendStatus, cfg: config.Config) -> str:
+    mark = "[green]✓[/]" if status.ready else "[red]✗[/]"
+    parts = [f"Backend: {backend.label} {mark}"]
+    for spec in config.KEYS:
+        configured = "[green]✓[/]" if cfg.key(spec) else "[dim]– (not configured)[/]"
+        parts.append(f"{spec.label} {configured}")
+    return " · ".join(parts)
+
+
+# Setup and doctor helpers --------------------------------------------------------------
+
+
 def ask_secret(label: str) -> str:
     """Hidden input, so pasted keys don't stay on screen. Tests replace this."""
     return Prompt.ask(label, password=True, default="", show_default=False, console=console)
@@ -162,7 +244,7 @@ def _ask_for_key(spec: config.KeySpec, cfg: config.Config) -> str | None:
         console.print(f"  [red]✗[/] {escape(result.note)}. Try again, or press Enter to skip.")
 
 
-async def _run_checks(cfg: config.Config) -> tuple[CliStatus, dict[str, KeyCheck]]:
+async def _run_checks(cfg: config.Config) -> tuple[BackendStatus, dict[str, KeyCheck]]:
     keys = {spec.name: key for spec in config.KEYS if (key := cfg.key(spec))}
     cli_status, *results = await asyncio.gather(
         check_cli(), *(KEY_CHECKS[name](key) for name, key in keys.items())
@@ -170,7 +252,7 @@ async def _run_checks(cfg: config.Config) -> tuple[CliStatus, dict[str, KeyCheck
     return cli_status, dict(zip(keys, results, strict=True))
 
 
-def _backend_line(status: CliStatus) -> str:
+def _backend_line(status: BackendStatus) -> str:
     if status.ready:
         method = f" ({status.auth_method})" if status.auth_method else ""
         return f"[green]✓[/] {status.version or 'installed'} · logged in{method}"

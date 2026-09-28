@@ -6,7 +6,7 @@ import shutil
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from milo.backends.base import BackendEvent, RunOptions
+from milo.backends.base import BackendEvent, BackendStatus, RunOptions
 
 NOT_READY = "Codex backend coming soon — use Claude Code for now"
 
@@ -17,6 +17,9 @@ class CodexBackend:
 
     def available(self) -> bool:
         return shutil.which("codex") is not None
+
+    async def check(self) -> BackendStatus:
+        return BackendStatus(installed=self.available(), problem=NOT_READY)
 
     def run(
         self,

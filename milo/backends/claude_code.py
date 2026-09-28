@@ -12,10 +12,9 @@ import os
 import shutil
 import signal
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
 from pathlib import Path
 
-from milo.backends.base import BackendEvent, Error, RunOptions
+from milo.backends.base import BackendEvent, BackendStatus, Error, RunOptions
 from milo.backends.stream import LOGIN_HINT, WEB_TOOLS, StreamParser
 
 INSTALL_HINT = (
@@ -23,19 +22,6 @@ INSTALL_HINT = (
     "(more options: https://code.claude.com/docs/en/setup)."
 )
 STREAM_LIMIT = 32 * 1024 * 1024  # one stream-json line can hold a whole fetched page
-
-
-@dataclass(frozen=True)
-class CliStatus:
-    installed: bool
-    logged_in: bool | None = None  # None when the CLI couldn't tell us
-    version: str | None = None
-    auth_method: str | None = None
-    problem: str | None = None  # what's wrong and how to fix it
-
-    @property
-    def ready(self) -> bool:
-        return self.installed and self.logged_in is True
 
 
 class ClaudeCodeBackend:
@@ -48,7 +34,7 @@ class ClaudeCodeBackend:
     def available(self) -> bool:
         return shutil.which(self._executable) is not None
 
-    async def check(self) -> CliStatus:
+    async def check(self) -> BackendStatus:
         return await check_cli(self._executable)
 
     async def run(
@@ -164,30 +150,32 @@ def _child_env() -> dict[str, str]:
     return {k: v for k, v in os.environ.items() if not k.startswith("MILO_")}
 
 
-async def check_cli(executable: str = "claude") -> CliStatus:
+async def check_cli(executable: str = "claude") -> BackendStatus:
     """Is `claude` on PATH and logged in? Uses `claude auth status`, so no model call."""
     path = shutil.which(executable)
     if path is None:
-        return CliStatus(installed=False, problem=f"Claude Code isn't installed. {INSTALL_HINT}")
+        return BackendStatus(
+            installed=False, problem=f"Claude Code isn't installed. {INSTALL_HINT}"
+        )
 
     version_out = await _capture(path, "--version")
     version = version_out.split()[0] if version_out else None
     try:
         auth = json.loads(await _capture(path, "auth", "status") or "")
     except ValueError:
-        return CliStatus(
+        return BackendStatus(
             installed=True,
             version=version,
             problem="Couldn't read `claude auth status`. Update with `claude update`.",
         )
     if not auth.get("loggedIn"):
-        return CliStatus(
+        return BackendStatus(
             installed=True,
             logged_in=False,
             version=version,
             problem=f"Claude Code isn't logged in. {LOGIN_HINT}",
         )
-    return CliStatus(
+    return BackendStatus(
         installed=True, logged_in=True, version=version, auth_method=auth.get("authMethod")
     )
 

@@ -59,6 +59,19 @@ BackendEvent = SessionStarted | Progress | ToolCall | ToolResult | Final | Error
 
 
 @dataclass(frozen=True)
+class BackendStatus:
+    installed: bool
+    logged_in: bool | None = None  # None when the CLI couldn't tell us
+    version: str | None = None
+    auth_method: str | None = None
+    problem: str | None = None  # what's wrong and how to fix it
+
+    @property
+    def ready(self) -> bool:
+        return self.installed and self.logged_in is True
+
+
+@dataclass(frozen=True)
 class RunOptions:
     web: bool = True  # allow web search and fetch; nothing else is ever allowed
     schema: dict[str, Any] | None = None  # JSON Schema the final answer must match
@@ -71,6 +84,8 @@ class Backend(Protocol):
     label: str  # "Claude Code"
 
     def available(self) -> bool: ...
+
+    async def check(self) -> BackendStatus: ...  # installed and logged in? no model call
 
     def run(
         self,

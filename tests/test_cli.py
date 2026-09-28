@@ -3,7 +3,7 @@ import pytest
 from typer.testing import CliRunner
 
 from milo import __version__, cli, config
-from milo.backends.claude_code import CliStatus
+from milo.backends.base import BackendStatus
 from milo.collectors import places, youtube
 from tests.conftest import fixture_json
 
@@ -16,8 +16,10 @@ YOUTUBE_LANGUAGES = f"{youtube.API_ROOT}/i18nLanguages"
 
 @pytest.fixture
 def claude_ready(monkeypatch):
-    async def ready() -> CliStatus:
-        return CliStatus(installed=True, logged_in=True, version="2.1.283", auth_method="claude.ai")
+    async def ready() -> BackendStatus:
+        return BackendStatus(
+            installed=True, logged_in=True, version="2.1.283", auth_method="claude.ai"
+        )
 
     monkeypatch.setattr(cli, "check_cli", ready)
 
