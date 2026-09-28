@@ -1,11 +1,75 @@
-"""Shared collector pieces: key checks and Google API error handling."""
+"""Shared collector pieces: the Collector protocol, the runner, and Google error handling."""
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Awaitable, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any, Protocol
 
 import httpx
+
+from milo.models import CollectorResult, Intake
+
+COLLECTOR_TIMEOUT = 20.0  # seconds per collector, all requests included
+REQUEST_TIMEOUT = 10.0  # seconds per HTTP request
+
+
+class Collector(Protocol):
+    name: str  # "google_places"
+    label: str  # "Google Places"
+
+    def available(self) -> bool: ...
+
+    async def collect(self, intake: Intake) -> CollectorResult: ...
+
+
+async def collect_all(
+    collectors: Sequence[Collector], intake: Intake, timeout: float = COLLECTOR_TIMEOUT
+) -> list[CollectorResult]:
+    """Run every collector at once. Always returns one result per collector, in order."""
+
+    async def run(collector: Collector) -> CollectorResult:
+        if not collector.available():
+            return CollectorResult(source=collector.name, status="skipped", note="no key")
+        try:
+            return await asyncio.wait_for(collector.collect(intake), timeout)
+        except TimeoutError:
+            return failed(collector.name, f"timed out after {timeout:g}s")
+        except Exception as exc:  # collect() shouldn't raise; this is the backstop
+            return failed(collector.name, f"unexpected error ({type(exc).__name__})")
+
+    return list(await asyncio.gather(*(run(c) for c in collectors)))
+
+
+def failed(source: str, note: str) -> CollectorResult:
+    return CollectorResult(source=source, status="error", note=note)
+
+
+class CollectorError(Exception):
+    """A request failed; `note` is safe to show the user."""
+
+    def __init__(self, note: str) -> None:
+        super().__init__(note)
+        self.note = note
+
+
+async def read_json(request: Awaitable[httpx.Response]) -> dict[str, Any]:
+    """Await one Google API call. Raises CollectorError with a short note on any failure."""
+    try:
+        response = await request
+    except httpx.HTTPError as exc:
+        raise CollectorError(network_error(exc).note) from exc
+    if not response.is_success:
+        raise CollectorError(google_error(response).note)
+    try:
+        body = response.json()
+    except ValueError as exc:
+        raise CollectorError("unexpected response from Google") from exc
+    if not isinstance(body, dict):
+        raise CollectorError("unexpected response from Google")
+    return body
 
 
 class KeyStatus(StrEnum):

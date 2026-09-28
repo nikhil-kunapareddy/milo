@@ -1,0 +1,79 @@
+{
+  "kind": "youtube#searchListResponse",
+  "etag": "x",
+  "regionCode": "US",
+  "pageInfo": {
+    "totalResults": 1000000,
+    "resultsPerPage": 4
+  },
+  "items": [
+    {
+      "kind": "youtube#searchResult",
+      "etag": "e",
+      "id": {
+        "kind": "youtube#video",
+        "videoId": "vidAAAAAAA1"
+      },
+      "snippet": {
+        "publishedAt": "2026-05-02T15:00:07Z",
+        "channelId": "UCvidAAAAAAA1",
+        "title": "Best RAMEN in Boston?! Trying 5 spots",
+        "description": "\u2026",
+        "channelTitle": "Boston Food Crawl",
+        "liveBroadcastContent": "none",
+        "publishTime": "2026-05-02T15:00:07Z"
+      }
+    },
+    {
+      "kind": "youtube#searchResult",
+      "etag": "e",
+      "id": {
+        "kind": "youtube#video",
+        "videoId": "vidBBBBBBB2"
+      },
+      "snippet": {
+        "publishedAt": "2026-02-11T21:30:00Z",
+        "channelId": "UCvidBBBBBBB2",
+        "title": "$12 ramen near Fenway | student eats",
+        "description": "\u2026",
+        "channelTitle": "Campus Bites",
+        "liveBroadcastContent": "none",
+        "publishTime": "2026-02-11T21:30:00Z"
+      }
+    },
+    {
+      "kind": "youtube#searchResult",
+      "etag": "e",
+      "id": {
+        "kind": "youtube#video",
+        "videoId": "vidCCCCCCC3"
+      },
+      "snippet": {
+        "publishedAt": "2025-11-19T13:45:00Z",
+        "channelId": "UCvidCCCCCCC3",
+        "title": "Making tonkotsu at a Boston ramen shop",
+        "description": "\u2026",
+        "channelTitle": "Kitchen Stories BOS",
+        "liveBroadcastContent": "none",
+        "publishTime": "2025-11-19T13:45:00Z"
+      }
+    },
+    {
+      "kind": "youtube#searchResult",
+      "etag": "e",
+      "id": {
+        "kind": "youtube#video",
+        "videoId": "vidDDDDDDD4"
+      },
+      "snippet": {
+        "publishedAt": "2024-12-01T02:00:00Z",
+        "channelId": "UCvidDDDDDDD4",
+        "title": "Ramen night in Allston",
+        "description": "\u2026",
+        "channelTitle": "Allston Eats",
+        "liveBroadcastContent": "none",
+        "publishTime": "2024-12-01T02:00:00Z"
+      }
+    }
+  ]
+}

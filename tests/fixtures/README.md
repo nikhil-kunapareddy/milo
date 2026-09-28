@@ -9,3 +9,9 @@ Hand-written from Google's documented error format (not recorded, because trigge
 needs a real key in a specific state):
 
 - `places/error_quota.json`, `places/error_service_disabled.json`, `youtube/error_quota.json`.
+
+Hand-written success responses, shaped like the documented API responses (names, sites, and
+counts are made up; websites use `.example.com`):
+
+- `places/text_search_ok.json`, `places/details_reviews.json`
+- `youtube/search_ok.json`, `youtube/videos_ok.json`

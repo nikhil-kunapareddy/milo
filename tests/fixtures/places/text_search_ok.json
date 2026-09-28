@@ -1,0 +1,130 @@
+{
+  "places": [
+    {
+      "id": "ChIJtora00000000000000001",
+      "displayName": {
+        "text": "Tora Ramen",
+        "languageCode": "en"
+      },
+      "formattedAddress": "20 Tyler St, Boston, MA 02111, USA",
+      "rating": 4.5,
+      "userRatingCount": 1287,
+      "googleMapsUri": "https://maps.google.com/?cid=1000000000000000000",
+      "priceLevel": "PRICE_LEVEL_MODERATE",
+      "priceRange": {
+        "startPrice": {
+          "currencyCode": "USD",
+          "units": "10"
+        },
+        "endPrice": {
+          "currencyCode": "USD",
+          "units": "20"
+        }
+      },
+      "websiteUri": "https://www.toraramen.example.com/"
+    },
+    {
+      "id": "ChIJganko0000000000000002",
+      "displayName": {
+        "text": "Ganko Ittetsu Ramen",
+        "languageCode": "en"
+      },
+      "formattedAddress": "318 Harvard St, Brookline, MA 02446, USA",
+      "rating": 4.6,
+      "userRatingCount": 2104,
+      "googleMapsUri": "https://maps.google.com/?cid=1000000000000000001",
+      "priceLevel": "PRICE_LEVEL_MODERATE",
+      "priceRange": {
+        "startPrice": {
+          "currencyCode": "USD",
+          "units": "20"
+        },
+        "endPrice": {
+          "currencyCode": "USD",
+          "units": "30"
+        }
+      },
+      "websiteUri": "https://www.gankoittetsu.example.com/"
+    },
+    {
+      "id": "ChIJsantouka0000000000003",
+      "displayName": {
+        "text": "Hokkaido Ramen Santouka",
+        "languageCode": "en"
+      },
+      "formattedAddress": "66 Hereford St, Boston, MA 02115, USA",
+      "rating": 4.4,
+      "userRatingCount": 3321,
+      "googleMapsUri": "https://maps.google.com/?cid=1000000000000000002",
+      "priceLevel": "PRICE_LEVEL_MODERATE",
+      "priceRange": {
+        "startPrice": {
+          "currencyCode": "USD",
+          "units": "20"
+        },
+        "endPrice": {
+          "currencyCode": "USD",
+          "units": "30"
+        }
+      },
+      "websiteUri": "https://www.santouka.example.com/"
+    },
+    {
+      "id": "ChIJhojoko000000000000004",
+      "displayName": {
+        "text": "Hojoko",
+        "languageCode": "en"
+      },
+      "formattedAddress": "1271 Boylston St, Boston, MA 02215, USA",
+      "rating": 4.3,
+      "userRatingCount": 1892,
+      "googleMapsUri": "https://maps.google.com/?cid=1000000000000000003",
+      "priceLevel": "PRICE_LEVEL_EXPENSIVE",
+      "priceRange": {
+        "startPrice": {
+          "currencyCode": "USD",
+          "units": "30"
+        },
+        "endPrice": {
+          "currencyCode": "USD",
+          "units": "50"
+        }
+      },
+      "websiteUri": "https://www.hojoko.example.com/"
+    },
+    {
+      "id": "ChIJisshindo0000000000005",
+      "displayName": {
+        "text": "Isshindo Ramen",
+        "languageCode": "en"
+      },
+      "formattedAddress": "101 Allston St, Boston, MA 02134, USA",
+      "rating": 4.2,
+      "userRatingCount": 640,
+      "googleMapsUri": "https://maps.google.com/?cid=1000000000000000004",
+      "priceLevel": "PRICE_LEVEL_INEXPENSIVE",
+      "priceRange": {
+        "startPrice": {
+          "currencyCode": "USD",
+          "units": "10"
+        },
+        "endPrice": {
+          "currencyCode": "USD",
+          "units": "20"
+        }
+      }
+    },
+    {
+      "id": "ChIJwaku00000000000000006",
+      "displayName": {
+        "text": "Waku Waku Ramen",
+        "languageCode": "en"
+      },
+      "formattedAddress": "1 Brighton Ave, Boston, MA 02134, USA",
+      "rating": 4.1,
+      "userRatingCount": 455,
+      "googleMapsUri": "https://maps.google.com/?cid=1000000000000000005",
+      "websiteUri": "https://wakuwaku.example.com/menu"
+    }
+  ]
+}
