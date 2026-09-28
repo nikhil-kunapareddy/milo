@@ -47,20 +47,22 @@ Use WebSearch and WebFetch to find:
 3. Restaurant marketing practices that fit this business and its audience.
 4. Local demand drivers: campuses, offices, venues, events, seasons.
 
-Stay focused: about 6 to 10 searches and 3 to 6 page reads, then write the brief.
+Be thorough; time isn't a concern. Aim for 15 to 25 searches and 8 to 15 page reads across
+all four areas. Read competitors' own sites and menus where you can, and look for current
+prices, offers, and events. Stop when more searching stops turning up anything new.
 
 ## What to return
 
 Your final answer is the brief as a JSON object (the schema is enforced for you).
 
 - market_snapshot: 3 to 5 sentences on demand, competition, and prices in this area.
-- competitors: 4 to 8 direct competitors. rating, review_count, and price_level come only
+- competitors: 6 to 12 direct competitors, closest and most relevant first. rating, review_count, and price_level come only
   from the Google Places data above; use null for anything not in it. positioning: one line.
-- review_themes: 3 to 6 things guests praise or complain about, from the review text above
+- review_themes: 4 to 8 things guests praise or complain about, from the review text above
   {%- if not has_reviews %} or from reviews in pages you read (empty list if you found none){% endif %}.
 - content_benchmarks: what local food content performs well, from the YouTube data or pages
   you read. Empty list if there's no evidence.
-- gaps: 3 to 5 openings the competitors leave.
+- gaps: 4 to 6 openings the competitors leave.
 - campaign_ideas: exactly 5, specific and doable by a small team. At least one must be built
   on pricing or an offer (for example a weekday lunch special) positioned against the local
   price range.

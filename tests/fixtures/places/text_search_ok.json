@@ -1,7 +1,6 @@
 {
   "places": [
     {
-      "id": "ChIJtora00000000000000001",
       "displayName": {
         "text": "Tora Ramen",
         "languageCode": "en"
@@ -21,10 +20,57 @@
           "units": "20"
         }
       },
-      "websiteUri": "https://www.toraramen.example.com/"
+      "websiteUri": "https://www.toraramen.example.com/",
+      "reviews": [
+        {
+          "name": "places/ChIJtora00000000000000001/reviews/r1",
+          "relativePublishTimeDescription": "2 weeks ago",
+          "rating": 5,
+          "text": {
+            "text": "Rich, creamy broth and the chashu melts. Line was out the door on Friday but moved fast.",
+            "languageCode": "en"
+          },
+          "originalText": {
+            "text": "Rich, creamy broth and the chashu melts. Line was out the door on Friday but moved fast.",
+            "languageCode": "en"
+          },
+          "authorAttribution": {
+            "displayName": "A. Reviewer",
+            "uri": "https://www.google.com/maps/contrib/1",
+            "photoUri": "https://lh3.googleusercontent.com/a/1"
+          },
+          "publishTime": "2026-09-12T18:04:11Z"
+        },
+        {
+          "name": "places/ChIJtora00000000000000001/reviews/r2",
+          "relativePublishTimeDescription": "a month ago",
+          "rating": 3,
+          "text": {
+            "text": "Good noodles but $19 for a bowl feels steep for a student budget, and seating is tight.",
+            "languageCode": "en"
+          },
+          "authorAttribution": {
+            "displayName": "B. Reviewer",
+            "uri": "https://www.google.com/maps/contrib/2"
+          },
+          "publishTime": "2026-08-20T12:00:00Z"
+        },
+        {
+          "name": "places/ChIJtora00000000000000001/reviews/r3",
+          "relativePublishTimeDescription": "3 months ago",
+          "rating": 4,
+          "text": {
+            "text": "Spicy miso is the move. Staff were friendly, service a bit slow at peak.",
+            "languageCode": "en"
+          },
+          "authorAttribution": {
+            "displayName": "C. Reviewer"
+          },
+          "publishTime": "2026-06-30T20:15:00Z"
+        }
+      ]
     },
     {
-      "id": "ChIJganko0000000000000002",
       "displayName": {
         "text": "Ganko Ittetsu Ramen",
         "languageCode": "en"
@@ -44,10 +90,37 @@
           "units": "30"
         }
       },
-      "websiteUri": "https://www.gankoittetsu.example.com/"
+      "websiteUri": "https://www.gankoittetsu.example.com/",
+      "reviews": [
+        {
+          "relativePublishTimeDescription": "a week ago",
+          "rating": 5,
+          "text": {
+            "text": "Best Sapporo-style miso around. Tan tan men is incredible.",
+            "languageCode": "en"
+          },
+          "authorAttribution": {
+            "displayName": "D. Reviewer"
+          },
+          "publishTime": "2026-09-20T19:00:00Z",
+          "name": "places/x1/reviews/0"
+        },
+        {
+          "relativePublishTimeDescription": "2 months ago",
+          "rating": 2,
+          "text": {
+            "text": "Waited 50 minutes on a Saturday. Food was good, but not worth that line.",
+            "languageCode": "en"
+          },
+          "authorAttribution": {
+            "displayName": "E. Reviewer"
+          },
+          "publishTime": "2026-07-10T19:00:00Z",
+          "name": "places/x1/reviews/1"
+        }
+      ]
     },
     {
-      "id": "ChIJsantouka0000000000003",
       "displayName": {
         "text": "Hokkaido Ramen Santouka",
         "languageCode": "en"
@@ -67,10 +140,37 @@
           "units": "30"
         }
       },
-      "websiteUri": "https://www.santouka.example.com/"
+      "websiteUri": "https://www.santouka.example.com/",
+      "reviews": [
+        {
+          "relativePublishTimeDescription": "a week ago",
+          "rating": 5,
+          "text": {
+            "text": "Best Sapporo-style miso around. Tan tan men is incredible.",
+            "languageCode": "en"
+          },
+          "authorAttribution": {
+            "displayName": "D. Reviewer"
+          },
+          "publishTime": "2026-09-20T19:00:00Z",
+          "name": "places/x2/reviews/0"
+        },
+        {
+          "relativePublishTimeDescription": "2 months ago",
+          "rating": 2,
+          "text": {
+            "text": "Waited 50 minutes on a Saturday. Food was good, but not worth that line.",
+            "languageCode": "en"
+          },
+          "authorAttribution": {
+            "displayName": "E. Reviewer"
+          },
+          "publishTime": "2026-07-10T19:00:00Z",
+          "name": "places/x2/reviews/1"
+        }
+      ]
     },
     {
-      "id": "ChIJhojoko000000000000004",
       "displayName": {
         "text": "Hojoko",
         "languageCode": "en"
@@ -90,10 +190,37 @@
           "units": "50"
         }
       },
-      "websiteUri": "https://www.hojoko.example.com/"
+      "websiteUri": "https://www.hojoko.example.com/",
+      "reviews": [
+        {
+          "relativePublishTimeDescription": "a week ago",
+          "rating": 5,
+          "text": {
+            "text": "Best Sapporo-style miso around. Tan tan men is incredible.",
+            "languageCode": "en"
+          },
+          "authorAttribution": {
+            "displayName": "D. Reviewer"
+          },
+          "publishTime": "2026-09-20T19:00:00Z",
+          "name": "places/x3/reviews/0"
+        },
+        {
+          "relativePublishTimeDescription": "2 months ago",
+          "rating": 2,
+          "text": {
+            "text": "Waited 50 minutes on a Saturday. Food was good, but not worth that line.",
+            "languageCode": "en"
+          },
+          "authorAttribution": {
+            "displayName": "E. Reviewer"
+          },
+          "publishTime": "2026-07-10T19:00:00Z",
+          "name": "places/x3/reviews/1"
+        }
+      ]
     },
     {
-      "id": "ChIJisshindo0000000000005",
       "displayName": {
         "text": "Isshindo Ramen",
         "languageCode": "en"
@@ -115,7 +242,6 @@
       }
     },
     {
-      "id": "ChIJwaku00000000000000006",
       "displayName": {
         "text": "Waku Waku Ramen",
         "languageCode": "en"

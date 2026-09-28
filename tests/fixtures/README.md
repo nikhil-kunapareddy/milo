@@ -13,5 +13,5 @@ needs a real key in a specific state):
 Hand-written success responses, shaped like the documented API responses (names, sites, and
 counts are made up; websites use `.example.com`):
 
-- `places/text_search_ok.json`, `places/details_reviews.json`
+- `places/text_search_ok.json` (reviews included, as Text Search returns them)
 - `youtube/search_ok.json`, `youtube/videos_ok.json`

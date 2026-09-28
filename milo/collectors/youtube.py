@@ -22,7 +22,7 @@ API_ROOT = "https://www.googleapis.com/youtube/v3"
 SEARCH_URL = f"{API_ROOT}/search"
 VIDEOS_URL = f"{API_ROOT}/videos"
 KEY_CHECK_TIMEOUT = 10.0
-MAX_VIDEOS = 10
+MAX_VIDEOS = 25  # search.list costs the same for 5 or 50 results
 
 
 def headers(key: str) -> dict[str, str]:

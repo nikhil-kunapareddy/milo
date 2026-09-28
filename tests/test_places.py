@@ -1,5 +1,3 @@
-import re
-
 import httpx
 import pytest
 
@@ -10,7 +8,6 @@ from tests.conftest import fixture_json
 
 KEY = "AIzaSyPLACESPLACESPLACESPLACESPLACES9aZ"
 INTAKE = Intake(what="ramen", where="Fenway, Boston")
-DETAILS = re.compile(rf"{re.escape(places.API_ROOT)}/places/[^/:]+$")
 
 
 @pytest.fixture
@@ -20,15 +17,11 @@ def search_ok(http):
     )
 
 
-@pytest.fixture
-def details_ok(http):
-    return http.get(DETAILS).respond(200, json=fixture_json("places/details_reviews.json"))
-
-
-async def test_collects_competitors_with_reviews_for_the_top_five(search_ok, details_ok):
+async def test_collects_competitors_and_reviews_in_one_request(search_ok, http):
     result = await PlacesCollector(KEY).collect(INTAKE)
 
     assert result.status == "ok" and result.note is None
+    assert len(http.calls) == 1  # no Place Details calls
     data = result.data
     assert data["query"] == "ramen in Fenway, Boston"
     assert len(data["places"]) == 6
@@ -37,22 +30,27 @@ async def test_collects_competitors_with_reviews_for_the_top_five(search_ok, det
     assert (first["rating"], first["user_rating_count"]) == (4.5, 1287)
     assert (first["price_level"], first["price_range"]) == ("$$", "$10–20")
     assert first["reviews"][1]["text"].startswith("Good noodles but $19")
-    assert "authorAttribution" not in str(first["reviews"])  # reviewer identities stay out
-    assert [("reviews" in p) for p in data["places"]] == [True] * 5 + [False]
-    assert details_ok.call_count == 5
+    assert first["reviews"][0] == {
+        "rating": 5,
+        "when": "2 weeks ago",
+        "text": "Rich, creamy broth and the chashu melts. Line was out the door on Friday but "
+        "moved fast.",
+    }
+    assert "Reviewer" not in str(data)  # reviewer identities stay out
+    assert [len(p.get("reviews", [])) for p in data["places"]] == [3, 2, 2, 2, 0, 0]
 
 
-async def test_sends_key_and_field_masks_as_headers(search_ok, details_ok):
+async def test_sends_key_and_field_mask_as_headers(search_ok):
     await PlacesCollector(KEY).collect(INTAKE)
     search = search_ok.calls.last.request
     assert search.headers["X-Goog-Api-Key"] == KEY
-    assert "places.priceLevel" in search.headers["X-Goog-FieldMask"]
+    mask = search.headers["X-Goog-FieldMask"].split(",")
+    assert {"places.reviews", "places.priceLevel", "places.googleMapsUri"} <= set(mask)
     assert KEY not in str(search.url)
-    details = details_ok.calls.last.request
-    assert details.headers["X-Goog-FieldMask"] == "reviews"
+    assert search.read() == b'{"textQuery":"ramen in Fenway, Boston","pageSize":20}'
 
 
-async def test_surfaces_websites_and_maps_urls(search_ok, details_ok):
+async def test_surfaces_websites_and_maps_urls(search_ok):
     result = await PlacesCollector(KEY).collect(INTAKE)
     assert "https://www.toraramen.example.com/" in result.urls
     assert "https://maps.google.com/?cid=1000000000000000000" in result.urls
@@ -98,20 +96,6 @@ async def test_network_error(http):
     http.post(places.TEXT_SEARCH_URL).mock(side_effect=httpx.ConnectError("offline"))
     result = await PlacesCollector(KEY).collect(INTAKE)
     assert (result.status, result.note) == ("error", "network error")
-
-
-async def test_one_failed_review_lookup_keeps_everything_else(search_ok, http):
-    def details(request: httpx.Request) -> httpx.Response:
-        if "ChIJganko" in request.url.path:
-            return httpx.Response(503)
-        return httpx.Response(200, json=fixture_json("places/details_reviews.json"))
-
-    http.get(DETAILS).mock(side_effect=details)
-    result = await PlacesCollector(KEY).collect(INTAKE)
-    assert result.status == "ok"
-    assert result.note == "reviews unavailable for 1 of 5 places"
-    assert "reviews" not in result.data["places"][1]
-    assert "reviews" in result.data["places"][0]
 
 
 async def test_no_results(http):

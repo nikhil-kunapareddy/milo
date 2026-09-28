@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import Any
-from urllib.parse import quote
 
 import httpx
 
@@ -24,14 +22,14 @@ API_ROOT = "https://places.googleapis.com/v1"
 TEXT_SEARCH_URL = f"{API_ROOT}/places:searchText"
 KEY_CHECK_TIMEOUT = 10.0
 
-MAX_PLACES = 8
-MAX_REVIEWED = 5  # Place Details calls, one per place
+MAX_PLACES = 20  # the most one Text Search page returns; billing is per request
 MAX_REVIEW_CHARS = 1000
 
+# Asking for reviews here puts the whole call on the Enterprise + Atmosphere SKU, but it's
+# still one billed request instead of a Place Details call per place.
 SEARCH_FIELDS = ",".join(
     f"places.{field}"
     for field in (
-        "id",
         "displayName",
         "rating",
         "userRatingCount",
@@ -40,9 +38,9 @@ SEARCH_FIELDS = ",".join(
         "formattedAddress",
         "websiteUri",
         "googleMapsUri",
+        "reviews",
     )
 )
-DETAILS_FIELDS = "reviews"  # Place Details field names take no "places." prefix
 
 PRICE_LEVELS = {
     "PRICE_LEVEL_FREE": "Free",
@@ -68,70 +66,36 @@ class PlacesCollector:
         return bool(self._key)
 
     async def collect(self, intake: Intake) -> CollectorResult:
+        """One Text Search: competitors with ratings, prices, links, and up to 5 reviews each."""
         key = self._key
         if not key:
             return CollectorResult(source=self.name, status="skipped", note="no key")
         query = f"{intake.what} in {intake.where}"
         try:
             async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
-                places = await _search(client, key, query)
-                top = places[:MAX_REVIEWED]
-                reviews = await asyncio.gather(*(_reviews(client, key, p["id"]) for p in top))
+                body = await read_json(
+                    client.post(
+                        TEXT_SEARCH_URL,
+                        headers=headers(key, SEARCH_FIELDS),
+                        json={"textQuery": query, "pageSize": MAX_PLACES},
+                    )
+                )
+            places = [_place(raw) for raw in body.get("places", [])[:MAX_PLACES]]
         except CollectorError as exc:
             return failed(self.name, exc.note)
+        except (KeyError, TypeError, AttributeError):
+            return failed(self.name, "unexpected response from Google")
         except Exception as exc:  # never raise out of a collector
             return failed(self.name, f"unexpected error ({type(exc).__name__})")
 
-        missing = 0
-        for place, place_reviews in zip(top, reviews, strict=True):
-            if place_reviews is None:
-                missing += 1
-            else:
-                place["reviews"] = place_reviews
-        for place in places:
-            del place["id"]
-
-        notes = []
-        if not places:
-            notes.append("no matching places found")
-        if missing:
-            notes.append(f"reviews unavailable for {missing} of {len(top)} places")
         urls = [u for p in places for u in (p["website"], p["maps_url"]) if u]
         return CollectorResult(
             source=self.name,
             status="ok",
             data={"query": query, "places": places},
-            note="; ".join(notes) or None,
+            note=None if places else "no matching places found",
             urls=urls,
         )
-
-
-async def _search(client: httpx.AsyncClient, key: str, query: str) -> list[dict[str, Any]]:
-    body = await read_json(
-        client.post(
-            TEXT_SEARCH_URL,
-            headers=headers(key, SEARCH_FIELDS),
-            json={"textQuery": query, "pageSize": MAX_PLACES},
-        )
-    )
-    try:
-        return [_place(raw) for raw in body.get("places", [])[:MAX_PLACES]]
-    except (KeyError, TypeError, AttributeError) as exc:
-        raise CollectorError("unexpected response from Google") from exc
-
-
-async def _reviews(client: httpx.AsyncClient, key: str, place_id: str) -> list[dict] | None:
-    """Up to 5 reviews (Google's limit), or None if this one lookup fails."""
-    try:
-        body = await read_json(
-            client.get(
-                f"{API_ROOT}/places/{quote(place_id, safe='')}",
-                headers=headers(key, DETAILS_FIELDS),
-            )
-        )
-        return [_review(raw) for raw in body.get("reviews", [])]
-    except (CollectorError, KeyError, TypeError, AttributeError):
-        return None
 
 
 async def check_key(key: str) -> KeyCheck:
@@ -151,9 +115,8 @@ async def check_key(key: str) -> KeyCheck:
 
 
 def _place(raw: dict[str, Any]) -> dict[str, Any]:
-    return {
-        "id": raw["id"],
-        "name": (raw.get("displayName") or {}).get("text") or "Unnamed place",
+    place = {
+        "name": raw["displayName"]["text"],
         "rating": raw.get("rating"),
         "user_rating_count": raw.get("userRatingCount"),
         "price_level": PRICE_LEVELS.get(raw.get("priceLevel", "")),
@@ -162,6 +125,10 @@ def _place(raw: dict[str, Any]) -> dict[str, Any]:
         "website": raw.get("websiteUri"),
         "maps_url": raw.get("googleMapsUri"),
     }
+    reviews = [_review(r) for r in raw.get("reviews", [])]
+    if reviews:
+        place["reviews"] = reviews
+    return place
 
 
 def _review(raw: dict[str, Any]) -> dict[str, Any]:

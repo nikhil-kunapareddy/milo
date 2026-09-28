@@ -152,7 +152,8 @@ class ShowText:
 UIEvent = Say | Ask | Step | Working | ShowBrief | ShowText
 
 BRIEF_SCHEMA = Brief.model_json_schema()
-RESEARCH_OPTIONS = RunOptions(web=True, schema=BRIEF_SCHEMA, max_turns=30)
+# Thoroughness over speed: parallel searches share a turn, so 80 leaves plenty of room.
+RESEARCH_OPTIONS = RunOptions(web=True, schema=BRIEF_SCHEMA, max_turns=80)
 REPAIR_OPTIONS = RunOptions(web=False, schema=BRIEF_SCHEMA, max_turns=4)
 
 
