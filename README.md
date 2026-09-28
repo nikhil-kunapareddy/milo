@@ -4,10 +4,6 @@
 you sell and where, and it comes back with competitors, review themes, gaps, five campaign
 ideas, a 7-day content calendar, and sources you can check.
 
-> **Demo GIF coming soon.**
-<!-- To add it: record a session (e.g. with vhs or asciinema + agg), save it as docs/demo.gif,
-     and replace this placeholder with ![Milo demo](docs/demo.gif) -->
-
 Milo uses your own [Claude Code](https://code.claude.com/docs/en/setup) login to do the
 research. It never calls an LLM API itself and never asks for an LLM API key.
 
@@ -335,3 +331,7 @@ uv venv --python 3.11 && uv pip install -e ".[dev]"
 
 Fixtures in `tests/fixtures/` include real Claude Code stream-json transcripts; see
 `tests/fixtures/README.md` for which are recorded and which are hand-written.
+
+## License
+
+[MIT](LICENSE) © 2026 Sai Nikhil Kunapareddy
