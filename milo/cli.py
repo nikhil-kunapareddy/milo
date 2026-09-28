@@ -14,7 +14,9 @@ from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
 from milo import __version__, config
+from milo.backends import BACKENDS, DEFAULT_BACKEND
 from milo.backends.claude_code import CliStatus, check_cli
+from milo.backends.codex import CodexBackend
 from milo.collectors import places, youtube
 from milo.collectors.base import KeyCheck, KeyStatus
 
@@ -63,8 +65,14 @@ def main(
         bool,
         typer.Option("--version", callback=_show_version, is_eager=True, help="Show version."),
     ] = False,
+    backend: Annotated[
+        str, typer.Option("--backend", help=f"Agent backend: {', '.join(BACKENDS)}.")
+    ] = DEFAULT_BACKEND,
 ) -> None:
     """Milo · marketing research for food businesses."""
+    if backend not in BACKENDS:
+        raise typer.BadParameter(f"choose one of: {', '.join(BACKENDS)}", param_hint="--backend")
+    ctx.obj = {"backend": backend}
     if ctx.invoked_subcommand is None:
         console.print(f"[bold]{TAGLINE}[/]")
         console.print("Interactive research isn't built yet. Try `milo doctor` or `milo setup`.")
@@ -104,6 +112,7 @@ def doctor() -> None:
     grid.add_column(style="bold")
     grid.add_column()
     grid.add_row("Claude Code", _backend_line(cli_status))
+    grid.add_row("Codex", _codex_line())
     for spec in config.KEYS:
         grid.add_row(spec.label, _key_line(spec, cfg, checks.get(spec.name)))
     grid.add_row("Config", _config_line(cfg))
@@ -166,6 +175,12 @@ def _backend_line(status: CliStatus) -> str:
         method = f" ({status.auth_method})" if status.auth_method else ""
         return f"[green]✓[/] {status.version or 'installed'} · logged in{method}"
     return f"[red]✗[/] {escape(status.problem or 'not available')}"
+
+
+def _codex_line() -> str:
+    if CodexBackend().available():
+        return "[dim]–[/] found, but not supported yet · Milo uses Claude Code for now"
+    return "[dim]–[/] not installed (optional, not supported yet)"
 
 
 def _key_line(spec: config.KeySpec, cfg: config.Config, check: KeyCheck | None) -> str:
