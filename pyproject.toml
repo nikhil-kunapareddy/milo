@@ -17,6 +17,10 @@ dependencies = [
     "tomli-w>=1.0",
 ]
 
+[project.urls]
+Homepage = "https://github.com/nikhil-kunapareddy/milo"
+Repository = "https://github.com/nikhil-kunapareddy/milo"
+
 [project.optional-dependencies]
 dev = [
     "pytest>=8",

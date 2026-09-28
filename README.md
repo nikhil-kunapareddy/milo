@@ -19,7 +19,7 @@ You need Python 3.11+ and Claude Code, installed and logged in:
 curl -fsSL https://claude.ai/install.sh | bash   # skip if you already have Claude Code
 claude auth login
 
-pipx install git+https://github.com/<user>/milo
+pipx install git+https://github.com/nikhil-kunapareddy/milo
 milo doctor
 ```
 
@@ -97,36 +97,210 @@ same research session and can search the web again.
 Ctrl-C during research stops it and keeps the session. Press Enter to try again, or run
 `milo resume` later. Sessions live in `~/.milo/sessions/<id>/session.json`.
 
-## How it works
+## System design
 
-```
-CLI shell (Typer + Rich)       input, rendering, slash commands
-Session controller             explicit state machine: which inputs each state accepts
- ├─ Intake parser              free text → what, where, audience
- ├─ Collectors                 Google Places, YouTube: concurrent, never raise
- ├─ Backend adapter            the only code that knows about Claude Code
- ├─ Citation guard             checks every URL against what the session saw
- ├─ Session store              one JSON file per session
- └─ Report renderer            Jinja template → Markdown, from the stored session
-```
+Milo is a small, local agent harness: about 2,800 lines of Python around one external
+reasoning engine (the user's Claude Code CLI), with 231 tests. The model does the research
+and writing. Everything that has to be dependable (flow, validation, citations, storage,
+the report) is ordinary deterministic code.
 
-Three design rules hold everywhere:
+### Design principles
 
 1. **Deterministic code owns the flow; the model owns the reasoning.** Session states, input
-   checks, and the report layout are Python, not prompts. Session states:
-   `INTAKE → AUDIENCE → COLLECTING → RESEARCHING → FOLLOW_UP ⟲ → ENDED`.
+   checks, and the report layout are Python, not prompts.
 2. **API keys never enter the model's context.** Collectors call Google in Python and hand
    over only results. Keys go in request headers, never URLs, and are stripped from the
    environment of the `claude` process.
 3. **Every citation is verified.** A URL can appear in a brief, answer, or report only if it
    came back in this session: a web search result, a page that fetched successfully, or a
    collector result. Anything else is removed ("Verified 11 of 12 citations, 1 removed").
-   Competitor ratings, review counts, and prices come only from Google Places data, so a
-   made-up number can't slip in.
 
-Claude Code runs headless (`claude -p`) with only the web search and web fetch tools, in
-safe mode (your hooks, plugins, CLAUDE.md, and MCP servers stay out), from an empty folder
-per session, and without `--dangerously-skip-permissions`.
+### Architecture
+
+```mermaid
+flowchart LR
+    user(["Owner in a terminal"]) <--> cli
+
+    subgraph milo ["Milo (local Python process)"]
+        cli["CLI shell<br/>Typer + Rich"]
+        ctl["Session controller<br/>explicit state machine"]
+        intake["Intake parser"]
+        backend["Backend adapter<br/>+ stream parser"]
+        guard["Citation guard"]
+        coll["Collectors<br/>Places · YouTube"]
+        store[("Session store<br/>~/.milo/sessions")]
+        report["Report renderer<br/>Jinja → ./milo-*.md"]
+        cfg[("Config, 0600<br/>~/.config/milo")]
+    end
+
+    subgraph cc ["Claude Code (user's own login)"]
+        claude["claude -p subprocess<br/>web search + fetch only"]
+    end
+
+    subgraph gapi ["Google APIs (optional keys)"]
+        direction LR
+        places[("Places API (New)")]
+        yt[("YouTube Data API v3")]
+    end
+
+    cli <--> ctl
+    ctl --> intake
+    intake --> backend
+    ctl --> backend
+    ctl --> guard
+    ctl <--> store
+    ctl --> report
+    ctl --> coll
+    cfg -. "keys" .-> coll
+    backend -- "prompt on stdin<br/>stream-json on stdout" --> claude
+    coll -- "HTTPS, key in header" --> gapi
+```
+
+| Component | Responsibility | Deliberately does not |
+|---|---|---|
+| CLI shell (`cli.py`) | Reads input, renders events with Rich, `setup` / `doctor` / `resume` | Hold any business logic |
+| Session controller (`session.py`) | Owns the state machine; turns input into typed UI events | Print anything |
+| Intake parser (`intake.py`) | Free text → `{what, where, on_topic}` via one tool-less, schema-checked call | Guess when parsing fails (it falls back to asking) |
+| Collectors (`collectors/`) | Concurrent Google API calls with timeouts; results plus the URLs they surfaced | Raise: every failure becomes `skipped` or `error` with a short note |
+| Backend adapter (`backends/`) | The only code that knows Claude Code's flags and event shapes | Leak Claude-specific details into the rest of the app |
+| Citation guard (`guard.py`) | Tracks observed URLs; drops, renumbers, and scrubs everything else | Trust any URL the model writes |
+| Session store (`store.py`) | One JSON file per session, written atomically on every state change | Store keys |
+| Report renderer (`report.py`) | Markdown built from the stored session | Ask the model to write the report |
+
+### Request lifecycle
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor U as Owner
+    participant C as Controller
+    participant B as Backend adapter
+    participant CC as claude -p
+    participant G as Google APIs
+    participant GD as Citation guard
+    participant S as Store
+
+    U->>C: "I run a ramen place near Fenway"
+    C->>B: intake prompt (no tools, JSON schema)
+    B->>CC: spawn, prompt on stdin
+    CC-->>C: {what: ramen, where: "Fenway, Boston", on_topic: true}
+    C->>S: save (AUDIENCE)
+    U->>C: audience "2"
+    par concurrent, 20s timeout each
+        C->>G: Places Text Search (reviews included)
+    and
+        C->>G: YouTube search + video stats
+    end
+    G-->>C: results + URLs (or skipped: "no key")
+    C->>GD: observe collector URLs
+    C->>S: save (RESEARCHING)
+    C->>B: research prompt (web tools, Brief schema)
+    loop streamed as they happen
+        CC-->>C: tool call → progress line
+        CC-->>C: tool result (search hits, fetched pages)
+        C->>GD: observe hit URLs and 2xx fetches only
+    end
+    CC-->>C: Brief JSON (retry once if invalid)
+    C->>GD: verify sources, ground numbers in Places data
+    C->>S: save brief + verified sources (FOLLOW_UP)
+    C-->>U: brief, "Verified 32 of 32 citations"
+    U->>C: follow-up question
+    C->>B: same session (--resume)
+    CC-->>C: answer
+    C->>GD: scrub unverified links
+    C->>S: save turn
+```
+
+### Session state machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> INTAKE
+    INTAKE --> INTAKE: off-topic or missing what/where
+    INTAKE --> AUDIENCE: what and where known
+    AUDIENCE --> COLLECTING: 1–4 or Enter
+    COLLECTING --> RESEARCHING: collectors finished
+    RESEARCHING --> RESEARCHING: backend error or Ctrl-C (Enter retries)
+    RESEARCHING --> FOLLOW_UP: verified brief
+    FOLLOW_UP --> FOLLOW_UP: question, /sources, /report
+    INTAKE --> ENDED: /exit
+    AUDIENCE --> ENDED: /exit
+    COLLECTING --> ENDED: /exit
+    RESEARCHING --> ENDED: /exit
+    FOLLOW_UP --> ENDED: /exit
+    ENDED --> [*]
+```
+
+Each state declares which input kinds it accepts (text, empty, command) in an explicit table.
+Anything else gets a one-line hint and leaves the state unchanged. Transitions outside the
+table raise, and the tests check both tables. `ENDED` is never written to disk: a saved
+session keeps its last active state, so `milo resume` lands exactly where the user left off.
+
+### Key decisions and trade-offs
+
+| Decision | Why | Trade-off |
+|---|---|---|
+| Shell out to the user's `claude` CLI instead of calling an LLM API | No API key to manage; users bring their existing login and plan | Depends on the CLI's flags and output format, so all of that is isolated in `backends/` and pinned by recorded transcripts |
+| Parse `--output-format stream-json` line by line | Progress shows while research runs; the session id arrives first, so a crash is still resumable | Must survive unknown events and huge lines (32 MB read limit, junk lines ignored) |
+| `--json-schema` generated from the pydantic `Brief`, then pydantic validation | The CLI enforces the shape, including "exactly 5 ideas" and "exactly 7 days"; Python checks it again | One extra agent turn; one repair retry in the same session, then a raw-text fallback |
+| Observed URLs come only from structured fields | A search's prose summary is written by a smaller model and can invent links | Stricter than "any URL in a tool result": a real URL mentioned only in prose is dropped |
+| Ratings, review counts, and prices come only from Places data | Removes a whole class of hallucinated numbers | Without a Places key those columns are empty rather than estimated |
+| `--safe-mode`, `--tools WebSearch,WebFetch`, `--permission-prompts none`, empty working folder per session | The agent can't run code or touch files, and the user's own hooks, plugins, and MCP servers stay out | No local tools for the agent, which is the point |
+| CLI runs in its own process group; stop sends SIGTERM, then SIGKILL | Ctrl-C never leaves orphaned `claude` processes holding pipes open | POSIX-first (Windows falls back to killing the one process) |
+| One Places Text Search with `reviews` in the field mask | One billed request per session instead of search plus a Place Details call per competitor | Up to 5 reviews per place, which is Google's cap either way |
+| JSON file per session, atomic write on every change | Crash-safe, inspectable, no database to install | Not built for thousands of sessions (not a goal for a local tool) |
+
+### Security and privacy
+
+- **Keys**: stored in `~/.config/milo/config.toml` (`0600`, folder `0700`), overridable by env
+  vars, sent as `X-Goog-Api-Key` headers (never in URLs or logs), masked everywhere they're
+  shown (`AIza…x9Q`), checked with free or 1-unit calls, and removed from the `claude`
+  process's environment.
+- **Agent sandbox**: only web search and web fetch exist in the agent's session; nothing
+  else is allowed or prompted for. It runs from an empty folder, never with
+  `--dangerously-skip-permissions`, and never with `--bare`, which would require an API key.
+- **Data**: no telemetry. Sessions and reports stay on the user's machine.
+
+### Failure handling
+
+| Failure | What the user sees | State after |
+|---|---|---|
+| Missing, invalid, or over-quota key; network error | `– Google Places skipped (invalid key)`; the model is told not to invent that data | Continues |
+| `claude` missing or logged out | The exact fix (install command, or `claude auth login`) | Unchanged |
+| Research hits its turn limit | The same session is asked to wrap up with what it found | Continues |
+| Brief isn't valid JSON | One repair retry; then the raw text, with unverified links removed | FOLLOW_UP |
+| Backend error or crash mid-research | The error, then "Press Enter to try again" (collector data is kept) | RESEARCHING |
+| Ctrl-C mid-run | "Stopped."; the backend and its children are terminated | Saved, resumable |
+
+### Testing
+
+231 tests, and none of them call a real API or the real `claude` CLI.
+
+- **Stream parser**: runs over 8 recorded Claude Code transcripts: search + fetch, a
+  failed 404 fetch, structured output, resume, not logged in, and max turns.
+- **Subprocess plumbing**: driven by fake `claude` shell scripts (working folder, stdin
+  prompt, stripped env, crash output, early kill, huge lines, streaming timing).
+- **Collectors**: `respx` fixtures for success, missing key, invalid key (a recorded Google
+  response), quota, API disabled, timeout, network error, and malformed bodies.
+- **State machine, guard, research flow, report**: tested through the controller with a
+  scripted fake backend.
+
+### Project layout
+
+```
+milo/
+  cli.py                 Typer app, REPL loop, Rich rendering
+  session.py             state machine + controller + research/follow-up flow
+  intake.py              free text -> what/where (schema-checked, lenient fallback)
+  guard.py               observed-URL set, normalization, brief/text scrubbing
+  models.py              pydantic models: Intake, CollectorResult, Brief, Session
+  store.py · report.py · config.py
+  collectors/            base.py (protocol, runner, Google errors), places.py, youtube.py
+  backends/              base.py (protocol, events), claude_code.py, stream.py, codex.py
+  prompts/               intake, research, follow-up, repair, wrap-up (Jinja)
+  templates/report.md.j2
+tests/                   one file per module, fixtures/ with recorded transcripts
+```
 
 ## Data coverage and limitations
 
